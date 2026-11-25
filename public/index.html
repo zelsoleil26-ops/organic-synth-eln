@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>有機合成 仕込み・当量計算ノート</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- OpenChemLib (ESM -> window.OCL ブリッジ) -->
+  <script type="module">
+    import * as OCLNamespace from "https://cdn.jsdelivr.net/npm/openchemlib/+esm";
+    window.OCL = OCLNamespace.Molecule ? OCLNamespace : (OCLNamespace.default || OCLNamespace);
+    window.dispatchEvent(new CustomEvent("ocl-ready"));
+  </script>
+  <!-- JSME 化学構造式エディタ -->
+  <script>
+    window.__jsmeReady = false;
+    window.jsmeOnLoad = function () {
+      window.__jsmeReady = true;
+      window.dispatchEvent(new CustomEvent("jsme-ready"));
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/jsme-editor@2024.4.29/jsme.nocache.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <!-- 全画面ページ一覧（ダッシュボード・ギャラリー） -->
+  <div class="gallery-shell">
+    <header class="gallery-header">
+      <div class="gallery-header-inner">
+        <div class="brand">
+          <div class="brand-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 3h6" />
+              <path d="M10 3v5.4a2 2 0 0 1-.4 1.2L4.8 16.4A2.5 2.5 0 0 0 6.8 20.5h10.4a2.5 2.5 0 0 0 2-4.1l-4.8-6.8a2 2 0 0 1-.4-1.2V3" />
+              <path d="M6.5 15.5h11" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="brand-title">有機合成 仕込み・当量計算ノート</h1>
+            <div class="brand-sub">実験カードをクリックすると詳細ページが開きます（IndexedDB 自動保存）</div>
+          </div>
+        </div>
+
+        <div class="gallery-header-controls">
+          <div class="gallery-search-wrap">
+            <svg class="gallery-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="search"
+              id="page-search-input"
+              class="input gallery-search-input"
+              placeholder="ページ名・目的物・試薬で検索..."
+              autocomplete="off"
+            />
+          </div>
+          <div class="backup-btn-group">
+            <button type="button" id="btn-export-backup" class="btn btn-secondary" title="全ページをJSONファイルとして保存（Mac・スマホ間の移行用）">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              書き出し
+            </button>
+            <button type="button" id="btn-import-backup" class="btn btn-secondary" title="バックアップJSONファイルを読み込んで復元・統合">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              読み込み
+            </button>
+            <input type="file" id="backup-file-input" accept=".json,application/json" class="sr-only" />
+          </div>
+          <button type="button" id="btn-new-page" class="btn btn-primary">
+            <span aria-hidden="true">＋</span> 新規ページ作成
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="gallery-main">
+      <div class="gallery-meta-bar">
+        <div class="gallery-meta-left">
+          <span class="gallery-count-label">保存済みページ: <strong id="page-count">0</strong> 件</span>
+          <span id="cloud-status-pill" class="cloud-status-pill">ローカル保存 (IndexedDB)</span>
+          <button type="button" id="btn-cloud-sync" class="btn-sync-mini is-hidden" title="クラウドから最新データを再取得">
+            ↻ 再同期
+          </button>
+        </div>
+        <span class="gallery-hint">各カードには「結果」欄に登録した目的物の構造式が表示されます</span>
+      </div>
+      <div id="page-list" class="page-gallery-grid" aria-label="実験ページ一覧"></div>
+    </main>
+  </div>
+
+  <!-- 実験ページ ポップアップモーダル -->
+  <div id="page-popup-modal" class="page-popup is-hidden" role="dialog" aria-modal="true" aria-label="実験ページ詳細">
+    <div class="page-popup-backdrop" id="page-popup-backdrop"></div>
+    <div class="page-popup-dialog">
+      <!-- ポップアップ固定ヘッダー -->
+      <header class="editor-header page-popup-header">
+        <div class="page-title-block">
+          <label for="page-title-input" class="sr-only">ページ名</label>
+          <input
+            type="text"
+            id="page-title-input"
+            class="page-title-input"
+            placeholder="実験ページ名を入力（例: YN-001 / 20261125_鈴木カップリング）"
+            autocomplete="off"
+          />
+          <div class="save-meta">
+            <span id="save-status" class="save-status">保存済み</span>
+          </div>
+        </div>
+
+        <div class="editor-header-actions">
+          <button type="button" id="btn-save-page" class="btn btn-secondary">保存</button>
+          <button type="button" id="btn-delete-page" class="btn btn-danger-ghost">ページ削除</button>
+          <button type="button" id="btn-close-page-popup" class="btn btn-primary">一覧に戻る</button>
+        </div>
+      </header>
+
+      <!-- ポップアップ内スクロール領域 -->
+      <div class="page-popup-body">
+        <div class="editor">
+
+      <!-- 対応するNotionページリンク欄 -->
+      <section class="card notion-link-card" aria-label="対応するNotionページ">
+        <div class="notion-link-row">
+          <div class="notion-link-label">
+            <span class="notion-badge" aria-hidden="true">N</span>
+            <label for="notion-url-input" class="notion-label-text">対応するNotionページ</label>
+          </div>
+          <div class="notion-link-controls">
+            <input
+              type="url"
+              id="notion-url-input"
+              class="input notion-url-input"
+              placeholder="NotionページのURLを貼り付け（例: https://www.notion.so/...）"
+              autocomplete="off"
+            />
+            <a
+              id="btn-open-notion-app"
+              class="btn btn-primary btn-open-notion is-disabled"
+              href="#"
+              aria-disabled="true"
+              title="Notionデスクトップアプリで開く"
+            >
+              アプリで開く
+            </a>
+            <a
+              id="btn-open-notion-web"
+              class="btn btn-secondary btn-open-notion is-disabled"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled="true"
+              title="ブラウザで開く"
+            >
+              Web
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
+          </div>
+        </div>
+        <div id="notion-url-hint" class="notion-url-hint is-hidden"></div>
+      </section>
+
+      <!-- Scale（基準スケール）バー -->
+      <section class="card scale-card" aria-labelledby="scale-heading">
+        <div class="scale-row">
+          <div class="scale-info">
+            <h2 id="scale-heading" class="section-title">基準スケール (Scale)</h2>
+            <p class="section-desc">入力した値に各試薬の eq を掛けて、表全体の mmol と必要量をリアルタイム計算します。</p>
+          </div>
+          <div class="scale-input-group">
+            <label for="scale-input" class="scale-label">Scale</label>
+            <div class="input-with-unit">
+              <input
+                type="number"
+                id="scale-input"
+                class="input input-num input-scale"
+                placeholder="例: 1.00"
+                min="0"
+                step="any"
+                inputmode="decimal"
+              />
+              <span class="input-unit">mmol</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 試薬テーブル -->
+      <section class="card" aria-labelledby="reagent-table-heading">
+        <div class="section-header">
+          <div>
+            <h2 id="reagent-table-heading" class="section-title">試薬テーブル</h2>
+            <p class="section-desc">「試薬」セルには名称入力のほか、構造式画像の選択・ドラッグ＆ドロップ・ペースト (Cmd/Ctrl+V) が可能です。</p>
+          </div>
+          <div class="section-header-actions">
+            <div class="formula-toolbar" role="toolbar" aria-label="化学式 上付き・下付きツール">
+              <span class="formula-toolbar-label">化学式</span>
+              <button type="button" id="btn-subscript" class="btn-formula" title="下付き文字に変換／入力モード切替 (Ctrl + ,)" aria-pressed="false">
+                X<sub>2</sub> <span class="btn-formula-sub">下付き</span>
+              </button>
+              <button type="button" id="btn-superscript" class="btn-formula" title="上付き文字に変換／入力モード切替 (Ctrl + .)" aria-pressed="false">
+                X<sup>2</sup> <span class="btn-formula-sub">上付き</span>
+              </button>
+              <button type="button" id="btn-auto-formula" class="btn-formula btn-formula-auto" title="フォーカス中の入力欄を化学式に一括変換 (例: H2O → H₂O, Cu^2+ → Cu²⁺)">
+                H2O→H₂O
+              </button>
+            </div>
+            <button type="button" id="btn-open-editor-standalone" class="btn btn-secondary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="12 2 20.66 7 20.66 17 12 22 3.34 17 3.34 7 12 2"></polygon>
+              </svg>
+              構造式エディタ
+            </button>
+            <button type="button" id="btn-add-reagent" class="btn btn-secondary">
+              <span aria-hidden="true">＋</span> 行を追加
+            </button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="reagent-table">
+            <thead>
+              <tr>
+                <th class="col-reagent">試薬（名称・構造式）</th>
+                <th class="col-state">状態</th>
+                <th class="col-eq col-num">eq</th>
+                <th class="col-mmol col-num">mmol</th>
+                <th class="col-mw col-num">分子量 (MW)</th>
+                <th class="col-amount">必要量（計算結果）</th>
+                <th class="col-action" aria-label="操作"></th>
+              </tr>
+            </thead>
+            <tbody id="reagent-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 溶媒量記入欄 -->
+      <section class="card" aria-labelledby="solvent-heading">
+        <div class="section-header">
+          <div>
+            <h2 id="solvent-heading" class="section-title">溶媒量</h2>
+            <p class="section-desc">混合溶媒にも対応しています。必要に応じて行を追加してください。</p>
+          </div>
+          <div class="solvent-header-right">
+            <span id="solvent-total" class="solvent-total is-hidden">合計: 0.00 mL</span>
+            <button type="button" id="btn-add-solvent" class="btn btn-secondary">
+              <span aria-hidden="true">＋</span> 溶媒を追加
+            </button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="solvent-table">
+            <thead>
+              <tr>
+                <th>溶媒名</th>
+                <th class="col-solvent-vol col-num">必要量 (mL)</th>
+                <th class="col-action" aria-label="操作"></th>
+              </tr>
+            </thead>
+            <tbody id="solvent-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 結果（生成物・収率）テーブル -->
+      <section class="card" aria-labelledby="results-heading">
+        <div class="section-header">
+          <div>
+            <h2 id="results-heading" class="section-title">結果（生成物・収率）</h2>
+            <p class="section-desc">生成物の名称・写真・構造式と収量（mg / mL）を入力すると、mmol と Scale に対する収率 (%) を自動計算します。</p>
+          </div>
+          <button type="button" id="btn-add-result" class="btn btn-secondary">
+            <span aria-hidden="true">＋</span> 結果を追加
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th class="col-reagent">生成物（名称・構造式・写真）</th>
+                <th class="col-yield-amount">収量</th>
+                <th class="col-mw col-num">分子量 (MW)</th>
+                <th class="col-mmol col-num">mmol</th>
+                <th class="col-yield-pct col-num">収率 (vs Scale)</th>
+                <th class="col-action" aria-label="操作"></th>
+              </tr>
+            </thead>
+            <tbody id="result-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- コピー出力バー -->
+      <section class="card export-card" aria-labelledby="export-heading">
+        <div class="export-row">
+          <div>
+            <h2 id="export-heading" class="section-title">実験ノートへコピー</h2>
+            <p class="section-desc">NotionにはMarkdown表形式、Excelにはタブ区切り (TSV) 形式でクリップボードにコピーします。</p>
+          </div>
+          <div class="export-buttons">
+            <button type="button" id="btn-copy-notion" class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Notion用にコピー
+            </button>
+            <button type="button" id="btn-copy-excel" class="btn btn-secondary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="3" y1="15" x2="21" y2="15"></line>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+              Excel用にコピー
+            </button>
+          </div>
+        </div>
+      </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 構造式画像 拡大モーダル -->
+  <div id="image-modal" class="modal is-hidden" role="dialog" aria-modal="true" aria-label="構造式プレビュー">
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-content">
+      <button type="button" id="modal-close" class="modal-close" aria-label="閉じる">×</button>
+      <img id="modal-image" src="" alt="構造式プレビュー" />
+      <div id="modal-caption" class="modal-caption"></div>
+    </div>
+  </div>
+
+  <!-- 化学構造式エディタ モーダル (JSME + OpenChemLib) -->
+  <div id="structure-editor-modal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="editor-modal-title">
+    <div class="modal-backdrop" id="editor-modal-backdrop"></div>
+    <div class="modal-content modal-structure-editor">
+      <div class="editor-modal-header">
+        <div>
+          <h3 id="editor-modal-title" class="editor-modal-title">化学構造式エディタ・物性計算</h3>
+          <p class="editor-modal-sub">構造式を描画・編集すると、分子式・分子量 (MW)・精密質量・SMILES がリアルタイムで計算されます。</p>
+        </div>
+        <button type="button" id="editor-modal-close" class="modal-close editor-modal-close-btn" aria-label="閉じる">×</button>
+      </div>
+
+      <div class="editor-modal-body">
+        <!-- 左: JSME エディタ & SMILES 読込 -->
+        <div class="editor-canvas-col">
+          <div class="editor-toolbar">
+            <div class="editor-toolbar-group">
+              <button type="button" id="btn-chem-lasso" class="btn btn-secondary btn-sm btn-lasso-toggle" title="投げ縄ツールで部分選択・移動・回転・削除" aria-pressed="false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 22a5 5 0 0 1-2-4" />
+                  <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1" />
+                  <circle cx="5" cy="18" r="2" />
+                </svg>
+                投げ縄・回転
+              </button>
+              <div class="rotate-btn-group" role="group" aria-label="回転操作">
+                <button type="button" class="btn-rot js-chem-rotate" data-angle="-90" title="左へ90°回転">↺90°</button>
+                <button type="button" class="btn-rot js-chem-rotate" data-angle="-15" title="左へ15°回転">↺15°</button>
+                <button type="button" class="btn-rot js-chem-rotate" data-angle="15" title="右へ15°回転">↻15°</button>
+                <button type="button" class="btn-rot js-chem-rotate" data-angle="90" title="右へ90°回転">↻90°</button>
+              </div>
+              <button type="button" id="btn-chem-clean" class="btn btn-secondary btn-sm" title="2D座標をきれいに最適化 (Clean)">
+                Clean
+              </button>
+              <button type="button" id="btn-chem-undo" class="btn btn-secondary btn-sm" title="元に戻す (Undo)" disabled>
+                Undo
+              </button>
+              <button type="button" id="btn-chem-redo" class="btn btn-secondary btn-sm" title="やり直す (Redo)" disabled>
+                Redo
+              </button>
+            </div>
+            <button type="button" id="btn-chem-clear" class="btn btn-danger-ghost btn-sm" title="キャンバスを全消去">
+              全消去
+            </button>
+          </div>
+
+          <div class="jsme-stage">
+            <div id="jsme-loading" class="jsme-loading">構造式エディタを読み込み中...</div>
+            <div id="jsme-container" class="jsme-container"></div>
+            <!-- 投げ縄選択・自由回転オーバーレイ -->
+            <div id="lasso-overlay" class="lasso-overlay is-hidden" aria-label="投げ縄選択・回転キャンバス">
+              <div class="lasso-subbar">
+                <span id="lasso-status" class="lasso-status">ドラッグで囲んで選択 ／ 枠上ハンドルで回転</span>
+                <div class="lasso-subbar-actions">
+                  <button type="button" id="btn-lasso-select-all" class="btn-lasso-mini">全選択</button>
+                  <button type="button" id="btn-lasso-deselect" class="btn-lasso-mini" disabled>解除</button>
+                  <button type="button" id="btn-lasso-delete" class="btn-lasso-mini is-danger" disabled>選択削除</button>
+                  <button type="button" id="btn-lasso-done" class="btn-lasso-mini is-primary">描画に戻る</button>
+                </div>
+              </div>
+              <canvas id="lasso-canvas" class="lasso-canvas"></canvas>
+            </div>
+          </div>
+
+          <div class="smiles-loader">
+            <label for="smiles-load-input" class="smiles-loader-label">SMILES から構造式を読み込み</label>
+            <div class="smiles-loader-row">
+              <input
+                type="text"
+                id="smiles-load-input"
+                class="input input-mono"
+                placeholder="例: O=Cc1ccc(Br)cc1 (4-ブロモベンズアルデヒド)"
+                autocomplete="off"
+              />
+              <button type="button" id="btn-load-smiles" class="btn btn-primary btn-sm">
+                読み込む
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右: リアルタイム物性計算 & 画像出力パネル -->
+        <div class="editor-props-col">
+          <div class="prop-panel">
+            <div class="prop-panel-title">リアルタイム物性計算</div>
+
+            <div class="prop-item">
+              <div class="prop-item-head">
+                <span class="prop-label">分子式</span>
+                <button type="button" class="btn-copy-prop" data-copy-prop="formula">コピー</button>
+              </div>
+              <div id="prop-formula" class="prop-value prop-formula">-</div>
+            </div>
+
+            <div class="prop-grid-2">
+              <div class="prop-item">
+                <div class="prop-item-head">
+                  <span class="prop-label">分子量 (MW)</span>
+                  <button type="button" class="btn-copy-prop" data-copy-prop="mw">コピー</button>
+                </div>
+                <div id="prop-mw" class="prop-value prop-num">-</div>
+              </div>
+
+              <div class="prop-item">
+                <div class="prop-item-head">
+                  <span class="prop-label">精密質量 (Exact Mass)</span>
+                  <button type="button" class="btn-copy-prop" data-copy-prop="exactMass">コピー</button>
+                </div>
+                <div id="prop-exact-mass" class="prop-value prop-num">-</div>
+              </div>
+            </div>
+
+            <div class="prop-item">
+              <div class="prop-item-head">
+                <span class="prop-label">SMILES</span>
+                <button type="button" class="btn-copy-prop" data-copy-prop="smiles">コピー</button>
+              </div>
+              <div id="prop-smiles" class="prop-value prop-smiles">-</div>
+            </div>
+          </div>
+
+          <div class="prop-panel">
+            <div class="prop-panel-head-row">
+              <span class="prop-panel-title">画像の出力・コピー</span>
+              <label class="bg-toggle-label">
+                <input type="checkbox" id="chk-png-transparent" />
+                <span>PNG背景透過</span>
+              </label>
+            </div>
+            <div id="chem-svg-preview" class="chem-svg-preview">
+              <span class="chem-svg-empty">構造式を描画するとプレビューが表示されます</span>
+            </div>
+            <div class="export-img-actions">
+              <button type="button" id="btn-copy-png" class="btn btn-primary btn-sm btn-full">
+                PNG画像をクリップボードにコピー
+              </button>
+              <div class="export-img-downloads">
+                <button type="button" id="btn-download-png" class="btn btn-secondary btn-sm btn-full">
+                  PNG ダウンロード
+                </button>
+                <button type="button" id="btn-download-svg" class="btn btn-secondary btn-sm btn-full">
+                  SVG ダウンロード
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="editor-modal-footer">
+        <div class="editor-footer-left">
+          <span id="editor-target-note" class="editor-target-note"></span>
+          <label id="editor-mw-mode-wrap" class="editor-mw-mode is-hidden">
+            <span>MW反映:</span>
+            <select id="editor-mw-mode" class="select select-sm">
+              <option value="sum">全構造式のMW合計を反映（推奨）</option>
+              <option value="replace">この構造のMWのみで上書き</option>
+              <option value="keep">MWは変更しない</option>
+            </select>
+          </label>
+        </div>
+        <div class="editor-footer-actions">
+          <button type="button" id="btn-editor-cancel" class="btn btn-secondary">閉じる</button>
+          <button type="button" id="btn-editor-apply" class="btn btn-primary">
+            試薬欄に反映（画像・MW）
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- バックアップ読み込み確認モーダル -->
+  <div id="backup-import-modal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
+    <div class="modal-backdrop" id="backup-modal-backdrop"></div>
+    <div class="modal-content modal-backup">
+      <button type="button" id="backup-modal-close" class="modal-close" aria-label="閉じる">×</button>
+      <h3 id="backup-modal-title" class="backup-modal-title">バックアップファイルの読み込み</h3>
+      <div id="backup-preview-box" class="backup-preview-box"></div>
+      <div class="backup-mode-group" role="radiogroup" aria-label="読み込み方法">
+        <label class="backup-mode-option">
+          <input type="radio" name="backup-import-mode" value="merge" checked />
+          <div>
+            <div class="backup-mode-title">統合して読み込む（おすすめ）</div>
+            <div class="backup-mode-desc">この端末にある既存ページは残しつつ、同じIDのページはバックアップ内容で更新し、新規ページを追加します。</div>
+          </div>
+        </label>
+        <label class="backup-mode-option">
+          <input type="radio" name="backup-import-mode" value="replace" />
+          <div>
+            <div class="backup-mode-title">すべて置き換える（完全復元）</div>
+            <div class="backup-mode-desc">この端末の既存ページをすべて消し、バックアップファイルとまったく同じ状態に揃えます。</div>
+          </div>
+        </label>
+      </div>
+      <div class="backup-modal-actions">
+        <button type="button" id="btn-backup-cancel" class="btn btn-secondary">キャンセル</button>
+        <button type="button" id="btn-backup-confirm" class="btn btn-primary">読み込みを実行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-hidden="true"></div>
+
+  <!-- 試薬行テンプレート -->
+  <template id="reagent-row-template">
+    <tr class="reagent-row">
+      <td class="cell-reagent" tabindex="-1">
+        <div class="reagent-cell-inner">
+          <div class="reagent-name-row">
+            <input type="text" class="input js-name" placeholder="試薬名 / 化学式 / CAS / SMILES" autocomplete="off" />
+            <button type="button" class="btn-mini js-lookup-mw" title="入力した化学式・化合物名・CAS・SMILESから分子量を自動取得">
+              MW取得
+            </button>
+          </div>
+          <div class="structures-gallery js-structures-gallery is-hidden"></div>
+          <div class="image-zone js-image-zone" tabindex="0" title="クリックで画像を追加、またはペースト・ドラッグ＆ドロップ（複数追加可）">
+            <input type="file" accept="image/*" multiple class="sr-only js-file-input" />
+            <div class="image-placeholder js-image-placeholder">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              <span class="js-placeholder-text">構造式画像を貼付 / 追加</span>
+            </div>
+          </div>
+          <div class="reagent-tools-row js-reagent-tools">
+            <button type="button" class="btn-mini btn-mini-draw js-open-chem-editor" title="化学構造式エディタで新しい構造式を描画してこの試薬欄に追加">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="12 2 20.66 7 20.66 17 12 22 3.34 17 3.34 7 12 2"></polygon>
+              </svg>
+              <span class="js-open-chem-label">＋ 構造式を描く</span>
+            </button>
+            <span class="mw-meta-badge js-mw-meta is-hidden"></span>
+          </div>
+        </div>
+      </td>
+      <td class="cell-state">
+        <select class="select js-state" aria-label="状態">
+          <option value="solid">固体</option>
+          <option value="liquid">液体</option>
+        </select>
+      </td>
+      <td class="cell-eq">
+        <input type="number" class="input input-num js-eq" placeholder="1.0" min="0" step="any" inputmode="decimal" aria-label="当量 (eq)" />
+      </td>
+      <td class="cell-mmol col-num">
+        <span class="calc-mmol js-mmol">-</span>
+      </td>
+      <td class="cell-mw">
+        <input type="number" class="input input-num js-mw" placeholder="185.02" min="0" step="any" inputmode="decimal" aria-label="分子量 (MW)" />
+      </td>
+      <td class="cell-amount">
+        <div class="amount-box">
+          <div class="density-wrap js-density-wrap is-hidden">
+            <label class="density-label">密度</label>
+            <input type="number" class="input input-num input-density js-density" placeholder="0.726" min="0" step="any" inputmode="decimal" aria-label="密度 (g/mL)" />
+            <span class="density-unit">g/mL</span>
+          </div>
+          <div class="amount-result js-amount">-</div>
+        </div>
+      </td>
+      <td class="cell-action">
+        <button type="button" class="btn-icon-delete js-delete-row" title="行を削除" aria-label="行を削除">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </td>
+    </tr>
+  </template>
+
+  <!-- 溶媒行テンプレート -->
+  <template id="solvent-row-template">
+    <tr class="solvent-row">
+      <td>
+        <input type="text" class="input js-solvent-name" placeholder="例: THF (脱水) / H2O" autocomplete="off" aria-label="溶媒名" />
+      </td>
+      <td class="col-solvent-vol">
+        <input type="number" class="input input-num js-solvent-vol" placeholder="5.00" min="0" step="any" inputmode="decimal" aria-label="必要量 (mL)" />
+      </td>
+      <td class="cell-action">
+        <button type="button" class="btn-icon-delete js-delete-solvent" title="溶媒行を削除" aria-label="溶媒行を削除">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </td>
+    </tr>
+  </template>
+
+  <!-- 結果行テンプレート -->
+  <template id="result-row-template">
+    <tr class="result-row">
+      <td class="cell-reagent" tabindex="-1">
+        <div class="reagent-cell-inner">
+          <div class="reagent-name-row">
+            <input type="text" class="input js-result-name" placeholder="生成物名 / 化学式 / CAS / SMILES" autocomplete="off" />
+            <button type="button" class="btn-mini js-lookup-mw" title="入力した化学式・化合物名・CAS・SMILESから分子量を自動取得">
+              MW取得
+            </button>
+          </div>
+          <div class="structures-gallery js-structures-gallery is-hidden"></div>
+          <div class="image-zone js-image-zone" tabindex="0" title="クリックで写真・画像を追加、またはペースト・ドラッグ＆ドロップ（複数追加可）">
+            <input type="file" accept="image/*" multiple class="sr-only js-file-input" />
+            <div class="image-placeholder js-image-placeholder">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              <span class="js-placeholder-text">写真・構造式を貼付 / 追加</span>
+            </div>
+          </div>
+          <div class="reagent-tools-row js-reagent-tools">
+            <button type="button" class="btn-mini btn-mini-draw js-open-chem-editor" title="化学構造式エディタで生成物の構造式を描画して追加">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="12 2 20.66 7 20.66 17 12 22 3.34 17 3.34 7 12 2"></polygon>
+              </svg>
+              <span class="js-open-chem-label">＋ 構造式を描く</span>
+            </button>
+            <span class="mw-meta-badge js-mw-meta is-hidden"></span>
+          </div>
+        </div>
+      </td>
+      <td class="cell-yield-amount">
+        <div class="yield-amount-box">
+          <div class="yield-input-row">
+            <input type="number" class="input input-num js-result-amount" placeholder="148.0" min="0" step="any" inputmode="decimal" aria-label="収量" />
+            <select class="select select-unit js-result-unit" aria-label="収量の単位">
+              <option value="mg">mg</option>
+              <option value="mL">mL</option>
+            </select>
+          </div>
+          <div class="density-wrap js-result-density-wrap is-hidden">
+            <label class="density-label">密度</label>
+            <input type="number" class="input input-num input-density js-result-density" placeholder="0.95" min="0" step="any" inputmode="decimal" aria-label="密度 (g/mL)" />
+            <span class="density-unit">g/mL</span>
+          </div>
+        </div>
+      </td>
+      <td class="cell-mw">
+        <input type="number" class="input input-num js-mw" placeholder="185.02" min="0" step="any" inputmode="decimal" aria-label="分子量 (MW)" />
+      </td>
+      <td class="cell-mmol col-num">
+        <span class="calc-mmol js-result-mmol">-</span>
+      </td>
+      <td class="cell-yield-pct">
+        <div class="yield-pct-badge js-result-yield is-empty">-</div>
+      </td>
+      <td class="cell-action">
+        <button type="button" class="btn-icon-delete js-delete-result" title="結果行を削除" aria-label="結果行を削除">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </td>
+    </tr>
+  </template>
+</body>
+</html>
