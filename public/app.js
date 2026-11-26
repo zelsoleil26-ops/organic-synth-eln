@@ -121,9 +121,9 @@
   }
 
   /**
-   * Notion用 Markdown 出力
+   * Notion用 Markdown 出力（仕込み：Scale・試薬・溶媒）
    */
-  function buildNotionMarkdown(page) {
+  function buildSetupNotionMarkdown(page) {
     const title = (page.title || "無題の実験").trim();
     const scaleNum = parsePositiveNumber(page.scale);
     const scaleText = scaleNum !== null ? `${page.scale} mmol` : "-";
@@ -189,6 +189,18 @@
       });
     }
 
+    return lines.join("\n");
+  }
+
+  /**
+   * Notion用 Markdown 出力（結果のみ）
+   */
+  function buildResultsNotionMarkdown(page) {
+    const lines = [];
+    lines.push("### 結果");
+    lines.push("| 生成物 | 収量 | 密度 (g/mL) | 分子量 (MW) | mmol | 収率 (%) |");
+    lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
+
     const activeResults = (page.results || []).filter(
       (r) =>
         (r.name && r.name.trim() !== "") ||
@@ -198,11 +210,9 @@
         (Array.isArray(r.structures) && r.structures.length > 0)
     );
 
-    if (activeResults.length > 0) {
-      lines.push("");
-      lines.push("### 結果");
-      lines.push("| 生成物 | 収量 | 密度 (g/mL) | 分子量 (MW) | mmol | 収率 (%) |");
-      lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
+    if (activeResults.length === 0) {
+      lines.push("| - | - | - | - | - | - |");
+    } else {
       activeResults.forEach((r) => {
         const calc = calculateResultRow(page.scale, r);
         const hasImages = Array.isArray(r.structures) && r.structures.length > 0;
@@ -225,10 +235,30 @@
   }
 
   /**
-   * Excel用 TSV (タブ区切り) 出力
+   * Notion用 Markdown 出力（全体）
    */
-  function buildExcelTSV(page) {
+  function buildNotionMarkdown(page) {
+    const setupMd = buildSetupNotionMarkdown(page);
+    const activeResults = (page.results || []).filter(
+      (r) =>
+        (r.name && r.name.trim() !== "") ||
+        r.amount !== "" ||
+        r.mw !== "" ||
+        r.density !== "" ||
+        (Array.isArray(r.structures) && r.structures.length > 0)
+    );
+    if (activeResults.length === 0) return setupMd;
+    return `${setupMd}\n\n${buildResultsNotionMarkdown(page)}`;
+  }
+
+  /**
+   * Excel用 TSV (タブ区切り) 出力（仕込み：Scale・試薬・溶媒）
+   */
+  function buildSetupExcelTSV(page) {
     const lines = [];
+    const scaleNum = parsePositiveNumber(page.scale);
+    lines.push(["Scale (mmol)", scaleNum !== null ? String(page.scale) : ""].join("\t"));
+    lines.push("");
     lines.push(
       ["試薬", "状態", "eq", "mmol", "分子量 (MW)", "密度 (g/mL)", "必要量", "単位"].join("\t")
     );
@@ -284,6 +314,18 @@
       });
     }
 
+    return lines.join("\n");
+  }
+
+  /**
+   * Excel用 TSV (タブ区切り) 出力（結果のみ）
+   */
+  function buildResultsExcelTSV(page) {
+    const lines = [];
+    lines.push(
+      ["生成物", "収量", "単位", "密度 (g/mL)", "分子量 (MW)", "mmol", "収率 (%)"].join("\t")
+    );
+
     const activeResults = (page.results || []).filter(
       (r) =>
         (r.name && r.name.trim() !== "") ||
@@ -293,35 +335,48 @@
         (Array.isArray(r.structures) && r.structures.length > 0)
     );
 
-    if (activeResults.length > 0) {
-      lines.push("");
-      lines.push(["生成物", "収量", "単位", "密度 (g/mL)", "分子量 (MW)", "mmol", "収率 (%)"].join("\t"));
-      activeResults.forEach((r) => {
-        const calc = calculateResultRow(page.scale, r);
-        const hasImages = Array.isArray(r.structures) && r.structures.length > 0;
-        const unit = r.unit === "mL" ? "mL" : "mg";
-        const amountCell = parsePositiveNumber(r.amount) !== null ? format2(Number(r.amount)) : "";
-        const unitCell = amountCell ? unit : "";
-        const densityCell =
-          unit === "mL" && parsePositiveNumber(r.density) !== null ? String(r.density) : "";
-        const mwCell = parsePositiveNumber(r.mw) !== null ? String(r.mw) : "";
-        const mmolCell = calc.mmol !== null ? format2(calc.mmol) : "";
-        const yieldCell = calc.yieldPct !== null ? format1(calc.yieldPct) : "";
-        lines.push(
-          [
-            sanitizeTsvCell(r.name || (hasImages ? "(生成物画像)" : "")),
-            amountCell,
-            unitCell,
-            densityCell,
-            mwCell,
-            mmolCell,
-            yieldCell,
-          ].join("\t")
-        );
-      });
-    }
+    activeResults.forEach((r) => {
+      const calc = calculateResultRow(page.scale, r);
+      const hasImages = Array.isArray(r.structures) && r.structures.length > 0;
+      const unit = r.unit === "mL" ? "mL" : "mg";
+      const amountCell = parsePositiveNumber(r.amount) !== null ? format2(Number(r.amount)) : "";
+      const unitCell = amountCell ? unit : "";
+      const densityCell =
+        unit === "mL" && parsePositiveNumber(r.density) !== null ? String(r.density) : "";
+      const mwCell = parsePositiveNumber(r.mw) !== null ? String(r.mw) : "";
+      const mmolCell = calc.mmol !== null ? format2(calc.mmol) : "";
+      const yieldCell = calc.yieldPct !== null ? format1(calc.yieldPct) : "";
+      lines.push(
+        [
+          sanitizeTsvCell(r.name || (hasImages ? "(生成物画像)" : "")),
+          amountCell,
+          unitCell,
+          densityCell,
+          mwCell,
+          mmolCell,
+          yieldCell,
+        ].join("\t")
+      );
+    });
 
     return lines.join("\n");
+  }
+
+  /**
+   * Excel用 TSV (タブ区切り) 出力（全体）
+   */
+  function buildExcelTSV(page) {
+    const setupTsv = buildSetupExcelTSV(page);
+    const activeResults = (page.results || []).filter(
+      (r) =>
+        (r.name && r.name.trim() !== "") ||
+        r.amount !== "" ||
+        r.mw !== "" ||
+        r.density !== "" ||
+        (Array.isArray(r.structures) && r.structures.length > 0)
+    );
+    if (activeResults.length === 0) return setupTsv;
+    return `${setupTsv}\n\n${buildResultsExcelTSV(page)}`;
   }
 
   function isValidNotionLink(urlText) {
@@ -972,7 +1027,11 @@
       format2,
       calculateRow,
       calculateResultRow,
+      buildSetupNotionMarkdown,
+      buildResultsNotionMarkdown,
       buildNotionMarkdown,
+      buildSetupExcelTSV,
+      buildResultsExcelTSV,
       buildExcelTSV,
       isValidNotionLink,
       toNotionAppUrl,
@@ -1438,8 +1497,10 @@
   const elResultTemplate = document.getElementById("result-row-template");
   const elBtnAddResult = document.getElementById("btn-add-result");
 
-  const elBtnCopyNotion = document.getElementById("btn-copy-notion");
-  const elBtnCopyExcel = document.getElementById("btn-copy-excel");
+  const elBtnCopySetupNotion = document.getElementById("btn-copy-setup-notion");
+  const elBtnCopySetupExcel = document.getElementById("btn-copy-setup-excel");
+  const elBtnCopyResultsNotion = document.getElementById("btn-copy-results-notion");
+  const elBtnCopyResultsExcel = document.getElementById("btn-copy-results-excel");
 
   const elModal = document.getElementById("image-modal");
   const elModalBackdrop = document.getElementById("modal-backdrop");
@@ -4432,30 +4493,40 @@
     scheduleSave();
   });
 
-  elBtnCopyNotion.addEventListener("click", async () => {
+  elBtnCopySetupNotion.addEventListener("click", async () => {
     const page = getActivePage();
     if (!page) return;
-    const md = buildNotionMarkdown(page);
+    const md = buildSetupNotionMarkdown(page);
     window.__lastCopiedText = md;
     const ok = await copyToClipboard(md);
-    if (ok) {
-      showToast("コピーしました（Notion用 Markdown）");
-    } else {
-      showToast("コピーに失敗しました");
-    }
+    showToast(ok ? "コピーしました（仕込み・Notion用）" : "コピーに失敗しました");
   });
 
-  elBtnCopyExcel.addEventListener("click", async () => {
+  elBtnCopySetupExcel.addEventListener("click", async () => {
     const page = getActivePage();
     if (!page) return;
-    const tsv = buildExcelTSV(page);
+    const tsv = buildSetupExcelTSV(page);
     window.__lastCopiedText = tsv;
     const ok = await copyToClipboard(tsv);
-    if (ok) {
-      showToast("コピーしました（Excel用 TSV）");
-    } else {
-      showToast("コピーに失敗しました");
-    }
+    showToast(ok ? "コピーしました（仕込み・Excel用）" : "コピーに失敗しました");
+  });
+
+  elBtnCopyResultsNotion.addEventListener("click", async () => {
+    const page = getActivePage();
+    if (!page) return;
+    const md = buildResultsNotionMarkdown(page);
+    window.__lastCopiedText = md;
+    const ok = await copyToClipboard(md);
+    showToast(ok ? "コピーしました（結果・Notion用）" : "コピーに失敗しました");
+  });
+
+  elBtnCopyResultsExcel.addEventListener("click", async () => {
+    const page = getActivePage();
+    if (!page) return;
+    const tsv = buildResultsExcelTSV(page);
+    window.__lastCopiedText = tsv;
+    const ok = await copyToClipboard(tsv);
+    showToast(ok ? "コピーしました（結果・Excel用）" : "コピーに失敗しました");
   });
 
   elModalBackdrop.addEventListener("click", closeImageModal);

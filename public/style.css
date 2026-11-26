@@ -1393,18 +1393,66 @@ body {
 }
 
 /* Export Card */
-.export-row {
+.export-header {
+  margin-bottom: 14px;
+}
+
+.export-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-group-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #f8fafc;
   flex-wrap: wrap;
+}
+
+.export-group-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.export-group-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.export-group-badge.is-setup {
+  background: var(--bg-accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+
+.export-group-badge.is-result {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+
+.export-group-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .export-buttons {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
