@@ -947,7 +947,7 @@ body {
 }
 
 .col-amount {
-  width: 220px;
+  width: 248px;
 }
 
 .col-solvent-vol {
@@ -1272,7 +1272,15 @@ body {
   white-space: nowrap;
 }
 
+.amount-result-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .amount-result {
+  flex: 1;
+  min-width: 0;
   background: #f8fbff;
   border: 1px solid #dbeafe;
   border-radius: var(--radius-sm);
@@ -1286,6 +1294,42 @@ body {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.liquid-unit-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.btn-liq-unit {
+  height: 34px;
+  padding: 0 7px;
+  border: none;
+  background: #ffffff;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.btn-liq-unit + .btn-liq-unit {
+  border-left: 1px solid var(--border);
+}
+
+.btn-liq-unit:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+
+.btn-liq-unit.is-active {
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .amount-result.is-empty {

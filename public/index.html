@@ -638,7 +638,13 @@
             <input type="number" class="input input-num input-density js-density" placeholder="0.726" min="0" step="any" inputmode="decimal" aria-label="密度 (g/mL)" />
             <span class="density-unit">g/mL</span>
           </div>
-          <div class="amount-result js-amount">-</div>
+          <div class="amount-result-row">
+            <div class="amount-result js-amount">-</div>
+            <div class="liquid-unit-toggle js-liquid-unit-toggle is-hidden" role="group" aria-label="液体の表示単位">
+              <button type="button" class="btn-liq-unit is-active js-liq-unit-btn" data-unit="mL" aria-pressed="true">mL</button>
+              <button type="button" class="btn-liq-unit js-liq-unit-btn" data-unit="μL" aria-pressed="false">μL</button>
+            </div>
+          </div>
         </div>
       </td>
       <td class="cell-action">

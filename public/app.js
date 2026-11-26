@@ -21,19 +21,21 @@
    * 試薬1行の計算
    * - mmol = Scale * eq
    * - 固体: amount = mmol * MW [mg]
-   * - 液体: amount = (mmol * MW) / (density * 1000) [mL]
+   * - 液体 (mL): amount = (mmol * MW) / (density * 1000) [mL]
+   * - 液体 (μL): amount = (mmol * MW) / density [μL]
    */
   function calculateRow(scaleVal, row) {
     const scaleNum = parsePositiveNumber(scaleVal);
     const eqNum = parsePositiveNumber(row.eq);
     const mwNum = parsePositiveNumber(row.mw);
     const densityNum = parsePositiveNumber(row.density);
+    const liquidUnit = row.liquidUnit === "μL" ? "μL" : "mL";
 
     if (scaleNum === null || eqNum === null) {
       return {
         mmol: null,
         amount: null,
-        unit: row.state === "liquid" ? "mL" : "mg",
+        unit: row.state === "liquid" ? liquidUnit : "mg",
       };
     }
 
@@ -41,13 +43,14 @@
 
     if (row.state === "liquid") {
       if (mwNum === null || densityNum === null) {
-        return { mmol, amount: null, unit: "mL" };
+        return { mmol, amount: null, unit: liquidUnit };
       }
       const volumeMl = (mmol * mwNum) / (densityNum * 1000);
+      const amount = liquidUnit === "μL" ? volumeMl * 1000 : volumeMl;
       return {
         mmol,
-        amount: Number.isFinite(volumeMl) ? volumeMl : null,
-        unit: "mL",
+        amount: Number.isFinite(amount) ? amount : null,
+        unit: liquidUnit,
       };
     }
 
@@ -1319,6 +1322,7 @@
       structures: [],
       mwMeta: "",
       state: "solid",
+      liquidUnit: "mL",
       eq: "",
       mw: "",
       density: "",
@@ -1955,14 +1959,21 @@
     const calc = calculateRow(scaleVal, reagent);
     const mmolEl = trEl.querySelector(".js-mmol");
     const densityWrap = trEl.querySelector(".js-density-wrap");
+    const unitToggle = trEl.querySelector(".js-liquid-unit-toggle");
     const amountEl = trEl.querySelector(".js-amount");
 
     mmolEl.textContent = format2(calc.mmol);
 
-    if (reagent.state === "liquid") {
-      densityWrap.classList.remove("is-hidden");
-    } else {
-      densityWrap.classList.add("is-hidden");
+    const isLiquid = reagent.state === "liquid";
+    densityWrap.classList.toggle("is-hidden", !isLiquid);
+    if (unitToggle) {
+      unitToggle.classList.toggle("is-hidden", !isLiquid);
+      const currentUnit = reagent.liquidUnit === "μL" ? "μL" : "mL";
+      unitToggle.querySelectorAll(".js-liq-unit-btn").forEach((btn) => {
+        const active = btn.dataset.unit === currentUnit;
+        btn.classList.toggle("is-active", active);
+        btn.setAttribute("aria-pressed", String(active));
+      });
     }
 
     if (calc.amount !== null) {
@@ -2338,6 +2349,15 @@
       const current = getActivePage();
       updateReagentRowDisplay(tr, reagent, current ? current.scale : "");
       scheduleSave();
+    });
+
+    tr.querySelectorAll(".js-liq-unit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        reagent.liquidUnit = btn.dataset.unit === "μL" ? "μL" : "mL";
+        const current = getActivePage();
+        updateReagentRowDisplay(tr, reagent, current ? current.scale : "");
+        scheduleSave();
+      });
     });
 
     btnDeleteRow.addEventListener("click", () => {
