@@ -3091,10 +3091,34 @@
     }
   }
 
+  function getResponsiveJsmeSize() {
+    const isMobile = window.innerWidth <= 768;
+    const containerW = elJsmeContainer ? elJsmeContainer.clientWidth : 0;
+    const fallbackW = Math.max(260, window.innerWidth - 28);
+    const width = Math.max(260, Math.floor(containerW || fallbackW));
+    const height = isMobile ? 310 : 390;
+    return { width, height };
+  }
+
+  function resizeJsmeIfMounted() {
+    if (!jsmeApplet || !editorModalOpen) return;
+    const { width, height } = getResponsiveJsmeSize();
+    try {
+      if (typeof jsmeApplet.setSize === "function") {
+        jsmeApplet.setSize(`${width}px`, `${height}px`);
+      }
+    } catch (_) {
+      // ignore
+    }
+    if (lassoModeActive) {
+      fitLassoView(lassoMol);
+      renderLassoCanvas();
+    }
+  }
+
   function mountJsmeEditor() {
     if (jsmeApplet || !jsmeScriptLoaded || !editorModalOpen) return;
-    const width = Math.max(400, Math.floor(elJsmeContainer.clientWidth || 540));
-    const height = 390;
+    const { width, height } = getResponsiveJsmeSize();
     try {
       jsmeApplet = new window.JSApplet.JSME("jsme-container", `${width}px`, `${height}px`, {
         options: "newlook",
@@ -3136,6 +3160,13 @@
     if (editorModalOpen && jsmeApplet) {
       syncFromJsme(false);
     }
+  });
+
+  let resizeJsmeTimer = null;
+  window.addEventListener("resize", () => {
+    if (!editorModalOpen) return;
+    if (resizeJsmeTimer) clearTimeout(resizeJsmeTimer);
+    resizeJsmeTimer = setTimeout(resizeJsmeIfMounted, 150);
   });
 
   function openStructureEditor(target = null) {
@@ -3202,6 +3233,9 @@
         mountJsmeEditor();
       });
     } else {
+      requestAnimationFrame(() => {
+        resizeJsmeIfMounted();
+      });
       if (initialData.molfile) {
         loadMolfileIntoJsme(initialData.molfile, { resetHistory: true });
       } else if (initialData.smiles) {

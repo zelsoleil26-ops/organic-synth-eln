@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>有機合成 仕込み・当量計算ノート</title>
   <link rel="stylesheet" href="style.css" />
   <!-- OpenChemLib (ESM -> window.OCL ブリッジ) -->
@@ -616,22 +616,22 @@
           </div>
         </div>
       </td>
-      <td class="cell-state">
+      <td class="cell-state" data-label="状態">
         <select class="select js-state" aria-label="状態">
           <option value="solid">固体</option>
           <option value="liquid">液体</option>
         </select>
       </td>
-      <td class="cell-eq">
+      <td class="cell-eq" data-label="eq">
         <input type="number" class="input input-num js-eq" placeholder="1.0" min="0" step="any" inputmode="decimal" aria-label="当量 (eq)" />
       </td>
-      <td class="cell-mmol col-num">
+      <td class="cell-mmol col-num" data-label="mmol">
         <span class="calc-mmol js-mmol">-</span>
       </td>
-      <td class="cell-mw">
+      <td class="cell-mw" data-label="分子量 (MW)">
         <input type="number" class="input input-num js-mw" placeholder="185.02" min="0" step="any" inputmode="decimal" aria-label="分子量 (MW)" />
       </td>
-      <td class="cell-amount">
+      <td class="cell-amount" data-label="必要量">
         <div class="amount-box">
           <div class="density-wrap js-density-wrap is-hidden">
             <label class="density-label">密度</label>
@@ -712,7 +712,7 @@
           </div>
         </div>
       </td>
-      <td class="cell-yield-amount">
+      <td class="cell-yield-amount" data-label="収量">
         <div class="yield-amount-box">
           <div class="yield-input-row">
             <input type="number" class="input input-num js-result-amount" placeholder="148.0" min="0" step="any" inputmode="decimal" aria-label="収量" />
@@ -728,13 +728,13 @@
           </div>
         </div>
       </td>
-      <td class="cell-mw">
+      <td class="cell-mw" data-label="分子量 (MW)">
         <input type="number" class="input input-num js-mw" placeholder="185.02" min="0" step="any" inputmode="decimal" aria-label="分子量 (MW)" />
       </td>
-      <td class="cell-mmol col-num">
+      <td class="cell-mmol col-num" data-label="mmol">
         <span class="calc-mmol js-result-mmol">-</span>
       </td>
-      <td class="cell-yield-pct">
+      <td class="cell-yield-pct" data-label="収率 (vs Scale)">
         <div class="yield-pct-badge js-result-yield is-empty">-</div>
       </td>
       <td class="cell-action">
